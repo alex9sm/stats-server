@@ -13,7 +13,11 @@ int open_file(const char *filepath) {
     return fd;
 }
 
-void read_and_copy(int fd, char *buffer, size_t buffer_size) {
+ssize_t read_and_copy(int fd, char *buffer, size_t buffer_size) {
     ssize_t bytes_read = pread(fd, buffer, buffer_size - 1, 0);
+    if (bytes_read < 0) {
+        bytes_read = 0;
+    }
     buffer[bytes_read] = '\0';
+    return bytes_read;
 }

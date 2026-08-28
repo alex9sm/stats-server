@@ -1,10 +1,8 @@
+#include <iostream>
+#include <unistd.h>
+
 #include "utils.h"
 #include "parse_cpu.h"
-
-#include <iostream>
-#include <thread>
-#include <chrono>
-#include <unistd.h>
 
 struct CpuSample {
     unsigned long idle;
@@ -22,35 +20,50 @@ float calculate_util(CpuSample &prev, CpuSample &curr) {
     return 100.0 * ( 1.0f - (static_cast<float>(idle_delta) / static_cast<float>(total_delta)));
 }
 
-void parse_sample(int fd, char *buffer, size_t buffer_size, CpuSample &sample) {
-    lseek(fd, 0, SEEK_SET);
+void parse_cpu_sample(int fd, char *buffer, size_t buffer_size, CpuSample &sample) {
 
-    read_and_copy(fd, buffer, buffer_size);
+    ssize_t n = read_and_copy(fd, buffer, buffer_size);
 
-    unsigned long user, nice, system, idle, iowait, irq, softirq, steal; 
+    const char *p = buffer + 4;
+    const char *end = buffer + n;
+    unsigned long idle_time = 0;
+    unsigned long total = 0;
 
-    int parsed = sscanf(buffer, "cpu %lu %lu %lu %lu %lu %lu %lu %lu",
-                        &user, &nice, &system, &idle, &iowait, &irq, &softirq, &steal);
-    
-    unsigned long idle_time = idle + iowait;
-    unsigned long active_time = user + nice + system + irq + softirq + steal;
+    for (int i = 0; i < 8; i++) {
+        while (p < end && *p == ' ') {
+            ++p;
+        }
+        unsigned long value = 0;
+        while (p < end && *p >= '0' && *p <= '9') {
+            value = value * 10 + static_cast<unsigned long>(*p - '0');
+            ++p;
+        }
+        if (i == 3 || i == 4) {
+            idle_time += value;
+        }
+        total += value;
+    }
 
     sample.idle = idle_time;
-    sample.total = idle_time + active_time;
+    sample.total = total;
 }
 
 void scan_cpu_usage(char *buffer, size_t buffer_size) {
-    int fd = open_file("/proc/stat");
+    static CpuSample prevSample = {};
+    static bool has_prev = false;
+    static int fd = open_file("/proc/stat");
 
-    CpuSample prevSample{};
     CpuSample currSample{};
+    parse_cpu_sample(fd, buffer, buffer_size, currSample);
 
-    parse_sample(fd, buffer, buffer_size, prevSample);
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-    parse_sample(fd, buffer, buffer_size, currSample);
+    if (!has_prev) {
+        prevSample = currSample;
+        has_prev = true;
+        return;
+    }
 
     float usage = calculate_util(prevSample, currSample);
     std::cout << usage << "%\n";
+
+    prevSample = currSample;
 }
