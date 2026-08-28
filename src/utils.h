@@ -2,4 +2,5 @@
 
 #include <cstddef>
 
-void open_and_copy(const char *filepath, char *buffer, size_t buffer_size);
+int open_file(const char *filepath);
+void read_and_copy(int fd, char *buffer, size_t buffer_size);

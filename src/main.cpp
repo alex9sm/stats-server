@@ -4,10 +4,12 @@
 
 #include <iostream>
 
-char buffer[512];
-size_t buffer_size = sizeof(buffer);
+constexpr size_t buffer_size = 512;
+char buffer[buffer_size];
 
 int main() {
-    parse_cpu(buffer, buffer_size);
+    scan_cpu_usage(buffer, buffer_size);
+    buffer[0] = '\0';
+
     return 0;
 }
