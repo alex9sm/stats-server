@@ -1,4 +1,3 @@
-#include <iostream>
 #include <unistd.h>
 
 #include "utils.h"
@@ -34,7 +33,7 @@ void parse_cpu_sample(int fd, char *buffer, size_t buffer_size, CpuSample &sampl
             ++p;
         }
         unsigned long value = 0;
-        while (p < end && *p >= '0' && *p <= '9') {
+        while (is_digit(p, end)) {
             value = value * 10 + static_cast<unsigned long>(*p - '0');
             ++p;
         }
@@ -62,8 +61,7 @@ void scan_cpu_usage(char *buffer, size_t buffer_size) {
         return;
     }
 
-    float usage = calculate_util(prevSample, currSample);
-    std::cout << usage << "%\n";
+    //float usage = calculate_util(prevSample, currSample);
 
     prevSample = currSample;
 }

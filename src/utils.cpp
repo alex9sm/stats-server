@@ -21,3 +21,7 @@ ssize_t read_and_copy(int fd, char *buffer, size_t buffer_size) {
     buffer[bytes_read] = '\0';
     return bytes_read;
 }
+
+bool is_digit(const char *p, const char *end) {
+    return p < end && *p >= '0' && *p <= '9';
+}

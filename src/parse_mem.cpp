@@ -1,5 +1,4 @@
 #include <cstring>
-#include <iostream>
 #include <unistd.h>
 
 #include "utils.h"
@@ -21,7 +20,7 @@ bool parse_mem_field(const char *&p, const char *end, const char *key, size_t ke
         }
 
         unsigned long value = 0;
-        while (p < end && *p >= '0' && *p <= '9') {
+        while (is_digit(p, end)) {
             value = value * 10 + static_cast<unsigned long>(*p - '0');
             ++p;
         }
@@ -57,5 +56,4 @@ void scan_mem_usage(char *buffer, size_t buffer_size) {
     MemSample sample = {};
     static int fd = open_file("/proc/meminfo");
     parse_mem_sample(fd, buffer, buffer_size, sample);
-    std::cout << sample.mem_total_kb << " " << sample.mem_available_kb;
 }
