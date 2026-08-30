@@ -10,7 +10,7 @@ constexpr size_t buffer_size = 8192;
 char buffer[buffer_size];
 
 int main() {
-    scan_load(buffer, buffer_size);
+    scan_net(buffer, buffer_size);
 
     return 0;
 }

@@ -49,8 +49,8 @@ float calculate_cpu_util(CpuSample &prev, CpuSample &curr) {
 }
 
 void parse_cpu_sample(int fd, char *buffer, size_t buffer_size, CpuSample &sample) {
-
     ssize_t n = read_and_copy(fd, buffer, buffer_size);
+    if (n <= 0) return;
 
     const char *p = buffer + 4;
     const char *end = buffer + n;
@@ -118,6 +118,7 @@ bool parse_mem_field(const char *&p, const char *end, const char *key, size_t ke
 
 void parse_mem(int fd, char *buffer, size_t buffer_size, MemSample &sample) {
     ssize_t n = read_and_copy(fd, buffer, buffer_size);
+    if (n <= 0) return;
 
     const char *p = buffer;
     const char *end = buffer + n;
@@ -148,7 +149,8 @@ void scan_mem_usage(char *buffer, size_t buffer_size) {
 
 void parse_loadavg(int fd, char *buffer, size_t buffer_size, LoadSample &sample) {
     ssize_t n = read_and_copy(fd, buffer, buffer_size);
-
+    if (n <= 0) return;
+    
     const char *p = buffer;
     const char *end = buffer + n;
 
@@ -208,15 +210,16 @@ struct NetCounters {
     unsigned long long tx_drops;
 };
 
-void parse_net(int fd, char *buffer, size_t buffer_size, NetSample &sample) {
+void parse_net(int fd, char *buffer, size_t buffer_size, NetCounters &counters) {
     ssize_t n = read_and_copy(fd, buffer, buffer_size);
+    if (n <= 0) return;
 
     const char *p = buffer;
     const char *end = buffer + n;
 
     for (int i = 0; i < 2; i++) {
         p = find_char(p, end, '\n');
-        p++;
+        if (p < end) ++p;
     }
 
     while (p < end) {
@@ -237,44 +240,50 @@ void parse_net(int fd, char *buffer, size_t buffer_size, NetSample &sample) {
         }
 
         size_t name_len = static_cast<size_t>(colon - name);
-        bool is_loopback = (name_len == 2 && name[0] == 'l' && name[1] == 'o');
+
+        auto has_prefix = [name, name_len](const char *prefix, size_t prefix_len) {
+            return name_len > prefix_len && std::memcmp(name, prefix, prefix_len) == 0;
+        };
+        if (!has_prefix("nic", 3)) {
+            p = line_end + 1;
+            continue;
+        }
 
         const char *q = colon + 1;
-        unsigned long values[16] = {};
+        unsigned long long values[16] = {};
         for (int i = 0; i < 16; i++) {
             while (q < line_end && *q == ' ') {
                 ++q;
             }
-            unsigned long value = 0;
+            unsigned long long value = 0;
             while (is_digit(q, line_end)) {
-                value = value * 10 + static_cast<unsigned long>(*q - '0');
+                value = value * 10 + static_cast<unsigned long long>(*q - '0');
                 ++q;
             }
             values[i] = value;
         }
 
-        if (!is_loopback) {
-            sample.rx_bytesps   += values[0];
-            sample.rx_packetsps += values[1];
-            sample.rx_dropsps   += values[3];
-            sample.tx_bytesps   += values[8];
-            sample.tx_packetsps += values[9];
-            sample.tx_dropsps   += values[11];
-        }
+        
+        counters.rx_bytes   += values[0];
+        counters.rx_packets += values[1];
+        counters.rx_drops   += values[3];
+        counters.tx_bytes   += values[8];
+        counters.tx_packets += values[9];
+        counters.tx_drops   += values[11];
 
         p = line_end + 1;
     }
 }
 
-void calculate_net_rate(const NetSample &prev, const NetSample &curr, float dt, NetSample &sample) {  
-    if (dt <= 0.0) {
+void calculate_net_rate(const NetCounters &prev, const NetCounters &curr, float dt, NetSample &sample) {  
+    if (dt <= 0.0f) {
         sample = {};
         return;
     }
 
-    auto to_rate = [dt](unsigned long delta) -> int {
+    auto to_rate = [dt](unsigned long long delta) -> int {
         double rate = static_cast<double>(delta) / static_cast<double>(dt);
-        return static_cast<int>(rate);
+        return static_cast<unsigned long long>(rate);
     };
 
     sample.rx_bytesps   = to_rate(curr.rx_bytes   - prev.rx_bytes);
@@ -287,14 +296,14 @@ void calculate_net_rate(const NetSample &prev, const NetSample &curr, float dt, 
 
 void scan_net(char *buffer, size_t buffer_size) {
     static int fd = open_file("/proc/net/dev");
-    static NetSample prev = {};
+    static NetCounters prev = {};
     static struct timespec prev_ts = {};
     static bool has_prev = false;
 
     struct timespec ts = {};
     clock_gettime(CLOCK_MONOTONIC, &ts);
 
-    NetSample curr = {};
+    NetCounters curr = {};
     parse_net(fd, buffer, buffer_size, curr);
 
     if (!has_prev) {
@@ -311,4 +320,6 @@ void scan_net(char *buffer, size_t buffer_size) {
 
     prev = curr;
     prev_ts = ts;
+
+    std::cout << sample.rx_bytesps;
 }
