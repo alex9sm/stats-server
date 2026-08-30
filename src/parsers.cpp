@@ -55,7 +55,7 @@ float calculate_cpu_util(CpuSample &prev, CpuSample &curr) {
 }
 
 void parse_cpu_sample(int fd, char *buffer, size_t buffer_size, CpuSample &sample) {
-    ssize_t n = read_and_copy(fd, buffer, buffer_size);
+    ssize_t n = read_file(fd, buffer, buffer_size);
     if (n <= 0) return;
 
     const char *p = buffer + 4;
@@ -123,7 +123,7 @@ bool parse_mem_field(const char *&p, const char *end, const char *key, size_t ke
 }
 
 void parse_mem(int fd, char *buffer, size_t buffer_size, MemSample &sample) {
-    ssize_t n = read_and_copy(fd, buffer, buffer_size);
+    ssize_t n = read_file(fd, buffer, buffer_size);
     if (n <= 0) return;
 
     const char *p = buffer;
@@ -154,7 +154,7 @@ void scan_mem_usage(char *buffer, size_t buffer_size) {
 // LOAD
 
 void parse_loadavg(int fd, char *buffer, size_t buffer_size, LoadSample &sample) {
-    ssize_t n = read_and_copy(fd, buffer, buffer_size);
+    ssize_t n = read_file(fd, buffer, buffer_size);
     if (n <= 0) return;
     
     const char *p = buffer;
@@ -217,7 +217,7 @@ struct NetCounters {
 };
 
 void parse_net(int fd, char *buffer, size_t buffer_size, NetCounters &counters) {
-    ssize_t n = read_and_copy(fd, buffer, buffer_size);
+    ssize_t n = read_file(fd, buffer, buffer_size);
     if (n <= 0) return;
 
     const char *p = buffer;
@@ -278,23 +278,14 @@ void parse_net(int fd, char *buffer, size_t buffer_size, NetCounters &counters) 
     }
 }
 
-void calculate_net_rate(const NetCounters &prev, const NetCounters &curr, float dt, NetSample &sample) {  
-    if (dt <= 0.0f) {
-        sample = {};
-        return;
-    }
+void calculate_net_rate(const NetCounters &prev, const NetCounters &curr, double dt, NetSample &sample) {  
 
-    auto to_rate = [dt](unsigned long long delta) -> int {
-        double rate = static_cast<double>(delta) / static_cast<double>(dt);
-        return static_cast<unsigned long long>(rate);
-    };
-
-    sample.rx_bytesps   = to_rate(curr.rx_bytes   - prev.rx_bytes);
-    sample.tx_bytesps   = to_rate(curr.tx_bytes   - prev.tx_bytes);
-    sample.rx_packetsps = to_rate(curr.rx_packets - prev.rx_packets);
-    sample.tx_packetsps = to_rate(curr.tx_packets - prev.tx_packets);
-    sample.rx_dropsps   = to_rate(curr.rx_drops   - prev.rx_drops);
-    sample.tx_dropsps   = to_rate(curr.tx_drops   - prev.tx_drops);
+    sample.rx_bytesps   = counter_rate(prev.rx_bytes,   curr.rx_bytes,   dt);
+    sample.tx_bytesps   = counter_rate(prev.tx_bytes,   curr.tx_bytes,   dt);
+    sample.rx_packetsps = counter_rate(prev.rx_packets, curr.rx_packets, dt);
+    sample.tx_packetsps = counter_rate(prev.tx_packets, curr.tx_packets, dt);
+    sample.rx_dropsps   = counter_rate(prev.rx_drops,   curr.rx_drops,   dt);
+    sample.tx_dropsps   = counter_rate(prev.tx_drops,   curr.tx_drops,   dt);
 }
 
 void scan_net(char *buffer, size_t buffer_size) {
@@ -323,8 +314,6 @@ void scan_net(char *buffer, size_t buffer_size) {
 
     prev = curr;
     prev_ts = ts;
-
-    std::cout << sample.rx_bytesps << "\n";
 }
 
 // I/O
@@ -336,7 +325,7 @@ struct IOCounters {
 };
 
 void parse_diskstats(int fd, char *buffer, size_t buffer_size, IOCounters &counters) {
-    ssize_t n = read_and_copy(fd, buffer, buffer_size);
+    ssize_t n = read_file(fd, buffer, buffer_size);
     if (n <= 0) return;
 
     const char *p = buffer;
@@ -437,3 +426,4 @@ void scan_io(char *buffer, size_t buffer_size) {
 
     std::cout << sample.read_bytesps << "\n";
 }
+
