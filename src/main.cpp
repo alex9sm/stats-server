@@ -6,7 +6,7 @@
 
 #include "parsers.h"
 
-constexpr size_t buffer_size = 512;
+constexpr size_t buffer_size = 8192;
 char buffer[buffer_size];
 
 int main() {

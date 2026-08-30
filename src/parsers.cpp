@@ -1,6 +1,7 @@
 #include <cstring>
 #include <unistd.h>
 #include <iostream>
+#include <ctime>
 
 #include "parsers.h"
 #include "utils.h"
@@ -198,6 +199,15 @@ void scan_load(char *buffer, size_t buffer_size) {
 
 // NETWORK
 
+struct NetCounters {
+    unsigned long long rx_bytes;
+    unsigned long long tx_bytes;
+    unsigned long long rx_packets;
+    unsigned long long tx_packets;
+    unsigned long long rx_drops;
+    unsigned long long tx_drops;
+};
+
 void parse_net(int fd, char *buffer, size_t buffer_size, NetSample &sample) {
     ssize_t n = read_and_copy(fd, buffer, buffer_size);
 
@@ -256,8 +266,7 @@ void parse_net(int fd, char *buffer, size_t buffer_size, NetSample &sample) {
     }
 }
 
-void calculate_net_rate(const NetSample &prev, const NetSample &curr, float dt, NetSample &sample) {
-    
+void calculate_net_rate(const NetSample &prev, const NetSample &curr, float dt, NetSample &sample) {  
     if (dt <= 0.0) {
         sample = {};
         return;
