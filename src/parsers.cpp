@@ -335,16 +335,24 @@ struct IOCounters {
     unsigned long long io_ms;
 };
 
-bool is_target_disk(const char *dev, size_t len) {
-    return has_prefix(dev, len, "sd", 2) || has_prefix(dev, len, "nvme", 4) || has_prefix(dev, len, "hd", 2);
-}
-
 void parse_diskstats(int fd, char *buffer, size_t buffer_size, IOCounters &counters) {
     ssize_t n = read_and_copy(fd, buffer, buffer_size);
     if (n <= 0) return;
 
     const char *p = buffer;
     const char *end = buffer + n;
+
+    auto is_target_disk = [](const char *dev, size_t len) {
+        if (has_prefix(dev, len, "nvme", 4)) {
+            size_t i = len;
+            while (i > 0 && dev[i - 1] >= '0' && dev[i - 1] <= '9') --i;
+            return i > 0 && dev[i - 1] != 'p';
+        }
+        if (has_prefix(dev, len, "sd", 2) || has_prefix(dev, len, "hd", 2)) {
+            return dev[len - 1] < '0' || dev[len - 1] > '9';
+        }
+        return false;
+    };
 
     while (p < end) {
         const char *line_end = find_char(p, end, '\n');
@@ -354,7 +362,7 @@ void parse_diskstats(int fd, char *buffer, size_t buffer_size, IOCounters &count
         }
 
         for (int i = 0; i < 2; i++) {
-            while (p < line_end && is_digit(p, line_end)) ++p;
+            while (is_digit(p, line_end)) ++p;
             while (p < line_end && (*p == ' ' || *p == '\t')) ++p;
         }
 
@@ -362,15 +370,70 @@ void parse_diskstats(int fd, char *buffer, size_t buffer_size, IOCounters &count
         while (p < line_end && *p != ' ' && *p != '\t') ++p;
         size_t device_name_len = static_cast<size_t>(p - device_name);
 
-        if (is_target_disk(device_name, device_name_len)) {
-            
+        if (device_name_len > 0 && is_target_disk(device_name, device_name_len)) {
+            unsigned long long values[10] = {};
+            for (int i = 0; i < 10; i++) {
+                while (p < line_end && (*p == ' ' || *p == '\t')) {
+                    ++p;
+                }
+                unsigned long long value = 0;
+                while (is_digit(p, line_end)) {
+                    value = value * 10 + static_cast<unsigned long long>(*p - '0');
+                    ++p;
+                }
+                values[i] = value;
+            }
+
+            counters.sectors_read    += values[2];
+            counters.sectors_written += values[6];
+            counters.io_ms           += values[9];
         }
+        p = (line_end < end) ? line_end + 1 : end;
+    }
+}
+
+void calculate_io_rate(const IOCounters &prev, const IOCounters &curr, float dt, IOSample &sample) {
+    if (dt <= 0.0f) {
+        sample = {};
+        return;
     }
 
+    auto to_rate = [dt](unsigned long long delta) -> unsigned long long {
+        double rate = static_cast<double>(delta) / static_cast<double>(dt);
+        return static_cast<unsigned long long>(rate);
+    };
+
+    sample.read_bytesps  = to_rate((curr.sectors_read - prev.sectors_read) * 512);
+    sample.write_bytesps = to_rate((curr.sectors_written - prev.sectors_written) * 512);
+    sample.io_msps       = to_rate(curr.io_ms - prev.io_ms);
 }
 
 void scan_io(char *buffer, size_t buffer_size) {
-    static int fd = open_file("/proc/net/dev");
+    static int fd = open_file("/proc/diskstats");
+    static IOCounters prev = {};
+    static struct timespec prev_ts = {};
+    static bool has_prev = false;
 
+    struct timespec ts = {};
+    clock_gettime(CLOCK_MONOTONIC, &ts);
 
+    IOCounters curr = {};
+    parse_diskstats(fd, buffer, buffer_size, curr);
+
+    if (!has_prev) {
+        prev = curr;
+        prev_ts = ts;
+        has_prev = true;
+        return;
+    }
+
+    float dt = static_cast<float>(ts.tv_sec - prev_ts.tv_sec) + static_cast<float>(ts.tv_nsec - prev_ts.tv_nsec) / 1e9f;
+
+    IOSample sample = {};
+    calculate_io_rate(prev, curr, dt, sample);
+
+    prev = curr;
+    prev_ts = ts;
+
+    std::cout << sample.read_bytesps << "\n";
 }

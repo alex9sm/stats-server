@@ -11,7 +11,7 @@ char buffer[buffer_size];
 
 int main() {
     while (true) {
-        scan_net(buffer, buffer_size);
+        scan_io(buffer, buffer_size);
         std::this_thread::sleep_for(std::chrono::seconds(6));
     }
     return 0;
