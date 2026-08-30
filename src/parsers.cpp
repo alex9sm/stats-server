@@ -358,3 +358,29 @@ int scan_io(IOState &state, char *buffer, size_t buffer_size, const timespec &no
     return SCAN_OK;
 }
 
+// UPTIME
+
+int parse_uptime(int fd, char *buffer, size_t buffer_size, UpSample &sample) {
+    ssize_t n = read_file(fd, buffer, buffer_size);
+    if (n <= 0) return SCAN_ERROR;
+
+    const char *p = buffer;
+    const char *end = buffer + n;
+
+    int value = 0;
+    while (is_digit(p, end) && *p != '.') {
+        value = value * 10 + static_cast<int>(*p++ - '0');
+    }
+
+    sample.uptime = value;
+
+    return SCAN_OK;
+}
+
+int scan_uptime(UpState &state, char *buffer, size_t buffer_size, UpSample &out) {
+    if (state.fd < 0) return SCAN_ERROR;
+    UpSample sample = {};
+    if (parse_uptime(state.fd, buffer, buffer_size, sample) != SCAN_OK) return SCAN_ERROR;
+    out = sample;
+    return SCAN_OK;
+}

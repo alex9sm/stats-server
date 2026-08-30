@@ -100,8 +100,19 @@ struct IOState {
     bool has_prev = false;
 };
 
+// UPTIME
+
+struct UpSample {
+    int uptime;
+};
+
+struct UpState {
+    int fd = -1;
+};
+
 int scan_cpu_usage(CpuState &state, char *buffer, size_t buffer_size, CpuSample &out);
 int scan_mem_usage(MemState &state, char *buffer, size_t buffer_size, MemSample &out);
 int scan_load(LoadState &state, char *buffer, size_t buffer_size, LoadSample &out);
 int scan_net(NetState &state, char *buffer, size_t buffer_size, const timespec &now, NetSample &out);
 int scan_io(IOState &state, char *buffer, size_t buffer_size, const timespec &now, IOSample &out);
+int scan_uptime(UpState &state, char *buffer, size_t buffer_size, UpSample &out);

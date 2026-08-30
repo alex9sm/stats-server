@@ -12,11 +12,13 @@ struct Snapshot {
     LoadSample load = {};
     NetSample net = {};
     IOSample io = {};
+    UpSample up = {};
     int cpu_status = SCAN_NOT_READY;
     int mem_status = SCAN_NOT_READY;
     int load_status = SCAN_NOT_READY;
     int net_status = SCAN_NOT_READY;
     int io_status = SCAN_NOT_READY;
+    int up_status = SCAN_NOT_READY;
 };
 
 struct Collector {
@@ -25,6 +27,7 @@ struct Collector {
     LoadState load;
     NetState net;
     IOState io;
+    UpState up;
 
     char buffer[collector_buffer_size];
 };

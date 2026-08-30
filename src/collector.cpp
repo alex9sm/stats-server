@@ -30,6 +30,7 @@ int collector_init(Collector &collector) {
     if (!open_metric(collector.load.fd, "/proc/loadavg")) ++failures;
     if (!open_metric(collector.net.fd, "/proc/net/dev")) ++failures;
     if (!open_metric(collector.io.fd, "/proc/diskstats")) ++failures;
+    if (!open_metric(collector.up.fd, "/proc/uptime")) ++failures;
     return failures;
 }
 
@@ -44,6 +45,7 @@ void collector_tick(Collector &collector, Snapshot &out) {
     out.load_status = scan_load(collector.load, collector.buffer, collector_buffer_size, out.load);
     out.net_status = scan_net(collector.net, collector.buffer, collector_buffer_size, now, out.net);
     out.io_status = scan_io(collector.io, collector.buffer, collector_buffer_size, now, out.io);
+    out.up_status = scan_uptime(collector.up, collector.buffer, collector_buffer_size, out.up);
 
 }
 
@@ -53,5 +55,5 @@ void collector_close(Collector &collector) {
     close_metric(collector.load.fd);
     close_metric(collector.net.fd);
     close_metric(collector.io.fd);
-    
+
 }
