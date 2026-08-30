@@ -359,12 +359,12 @@ void parse_diskstats(int fd, char *buffer, size_t buffer_size, IOCounters &count
         }
 
         const char *device_name = p;
-        while (p < line_end && *p != ' ' && *p != '\t') {
-            ++p;
-        }
+        while (p < line_end && *p != ' ' && *p != '\t') ++p;
         size_t device_name_len = static_cast<size_t>(p - device_name);
 
-        
+        if (is_target_disk(device_name, device_name_len)) {
+            
+        }
     }
 
 }
