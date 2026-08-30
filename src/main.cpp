@@ -1,12 +1,10 @@
-// g++ -std=c++20 -Wall main.cpp parse_cpu.cpp parse_mem.cpp parse_load.cpp utils.cpp -o ../main
+// g++ -O3 -std=c++20 -Wall main.cpp parsers.cpp utils.cpp -o ../main
 
 #include <iostream>
 #include <chrono>
 #include <thread>
 
-#include "parse_cpu.h"
-#include "parse_mem.h"
-#include "parse_load.h"
+#include "parsers.h"
 
 constexpr size_t buffer_size = 512;
 char buffer[buffer_size];

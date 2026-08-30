@@ -25,3 +25,10 @@ ssize_t read_and_copy(int fd, char *buffer, size_t buffer_size) {
 bool is_digit(const char *p, const char *end) {
     return p < end && *p >= '0' && *p <= '9';
 }
+
+const char *find_char(const char *p, const char *end, char c) {
+    while (p < end && *p != c) {
+        ++p;
+    }
+    return p;
+}
