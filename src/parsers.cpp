@@ -1,51 +1,19 @@
 #include <cstring>
 #include <unistd.h>
-#include <iostream>
 #include <ctime>
 
 #include "parsers.h"
 #include "utils.h"
 
-struct CpuSample {
-    unsigned long idle;
-    unsigned long total;
-};
-
-struct MemSample {
-    unsigned long mem_total_kb;
-    unsigned long mem_free_kb;
-    unsigned long mem_available_kb;
-    unsigned long swap_total_kb;
-    unsigned long swap_free_kb;
-};
-
-struct LoadSample {
-    float minute_load;
-    int running_processes;
-    int total_processes;
-};
-
-// ps = per second
-struct NetSample {
-    int rx_bytesps;
-    int tx_bytesps;
-    int rx_packetsps;
-    int tx_packetsps;
-    int rx_dropsps;
-    int tx_dropsps;
-};
-
-struct IOSample {
-    int read_bytesps;
-    int write_bytesps;
-    int io_msps;
-};
+// parsers for each metric. metric source directories are passed by caller in collector.cpp
+// ingests counter structs, state, file descriptor, buffer, buffer size. 
+// outputs error code and output struct params
 
 //CPU
 
-float calculate_cpu_util(CpuSample &prev, CpuSample &curr) {
-    unsigned long total_delta = curr.total - prev.total;
-    unsigned long idle_delta = curr.idle - prev.idle;
+float calculate_cpu_util(const CpuCounters &prev, CpuCounters &curr) {
+    unsigned long long total_delta = counter_delta(prev.total, curr.total);
+    unsigned long long idle_delta = counter_delta(prev.idle, curr.idle);
 
     if (total_delta == 0) {
         return 0.0;
@@ -54,9 +22,9 @@ float calculate_cpu_util(CpuSample &prev, CpuSample &curr) {
     return 100.0 * ( 1.0f - (static_cast<float>(idle_delta) / static_cast<float>(total_delta)));
 }
 
-void parse_cpu_sample(int fd, char *buffer, size_t buffer_size, CpuSample &sample) {
+int parse_cpu_sample(int fd, char *buffer, size_t buffer_size, CpuCounters &counters) {
     ssize_t n = read_file(fd, buffer, buffer_size);
-    if (n <= 0) return;
+    if (n <= 0) return SCAN_ERROR;
 
     const char *p = buffer + 4;
     const char *end = buffer + n;
@@ -78,33 +46,32 @@ void parse_cpu_sample(int fd, char *buffer, size_t buffer_size, CpuSample &sampl
         total += value;
     }
 
-    sample.idle = idle_time;
-    sample.total = total;
+    counters.idle = idle_time;
+    counters.total = total;
+    return SCAN_OK;
 }
 
-void scan_cpu_usage(char *buffer, size_t buffer_size) {
-    static CpuSample prevSample = {};
-    static bool has_prev = false;
-    static int fd = open_file("/proc/stat");
+int scan_cpu_usage(CpuState &state, char *buffer, size_t buffer_size, CpuSample &out) {
+    if (state.fd < 0) return SCAN_ERROR;
 
-    CpuSample currSample{};
-    parse_cpu_sample(fd, buffer, buffer_size, currSample);
+    CpuCounters curr{};
+    if (parse_cpu_sample(state.fd, buffer, buffer_size, curr) != SCAN_OK) return SCAN_ERROR;
 
-    if (!has_prev) {
-        prevSample = currSample;
-        has_prev = true;
-        return;
+    if (!state.has_prev) {
+        state.prev = curr;
+        state.has_prev = true;
+        return SCAN_NOT_READY;
     }
 
-    float usage = calculate_cpu_util(prevSample, currSample);
-
-    prevSample = currSample;
+    out.utilization = calculate_cpu_util(state.prev, curr);
+    state.prev = curr;
+    return SCAN_OK;
 }
 
 //MEMORY
 
 bool parse_mem_field(const char *&p, const char *end, const char *key, size_t key_len, unsigned long *output) {
-    if (static_cast<size_t>(end - p) >= key_len && std::memcmp(p, key, key_len) == 0) {
+    if (has_prefix(p, static_cast<size_t>(end - p), key, key_len)) {
         p += key_len;
 
         while (p < end && (*p == ' ' || *p == '\t')) {
@@ -122,9 +89,9 @@ bool parse_mem_field(const char *&p, const char *end, const char *key, size_t ke
     return false;
 }
 
-void parse_mem(int fd, char *buffer, size_t buffer_size, MemSample &sample) {
+int parse_mem(int fd, char *buffer, size_t buffer_size, MemSample &sample) {
     ssize_t n = read_file(fd, buffer, buffer_size);
-    if (n <= 0) return;
+    if (n <= 0) return SCAN_ERROR;
 
     const char *p = buffer;
     const char *end = buffer + n;
@@ -136,26 +103,25 @@ void parse_mem(int fd, char *buffer, size_t buffer_size, MemSample &sample) {
         else if (parse_mem_field(p, end, "SwapTotal:", 10, &sample.swap_total_kb)) {}
         else if (parse_mem_field(p, end, "SwapFree:", 9, &sample.swap_free_kb)) {}
 
-        while (p < end && *p != '\n') {
-            ++p;
-        }
-        if (p < end && *p == '\n') {
-            ++p;
-        }
+        p = find_char(p, end, '\n');
+        if (p < end) p++;
     }
+    return SCAN_OK;
 }
 
-void scan_mem_usage(char *buffer, size_t buffer_size) {
+int scan_mem_usage(MemState &state, char *buffer, size_t buffer_size, MemSample &out) {
+    if (state.fd < 0) return SCAN_ERROR;
     MemSample sample = {};
-    static int fd = open_file("/proc/meminfo");
-    parse_mem(fd, buffer, buffer_size, sample);
+    if (parse_mem(state.fd, buffer, buffer_size, sample) != SCAN_OK) return SCAN_ERROR;
+    out = sample;
+    return SCAN_OK;
 }
 
 // LOAD
 
-void parse_loadavg(int fd, char *buffer, size_t buffer_size, LoadSample &sample) {
+int parse_loadavg(int fd, char *buffer, size_t buffer_size, LoadSample &sample) {
     ssize_t n = read_file(fd, buffer, buffer_size);
-    if (n <= 0) return;
+    if (n <= 0) return SCAN_ERROR;
     
     const char *p = buffer;
     const char *end = buffer + n;
@@ -164,7 +130,7 @@ void parse_loadavg(int fd, char *buffer, size_t buffer_size, LoadSample &sample)
     int scale = 1;
 
     auto next_field = [&] {
-        while (p < end && *p != ' ') ++p;
+        p = find_char(p, end, ' ');
         while (p < end && *p == ' ') ++p;
     };
 
@@ -197,28 +163,23 @@ void parse_loadavg(int fd, char *buffer, size_t buffer_size, LoadSample &sample)
     sample.minute_load = float(whole) + float(frac) / float(scale);
     sample.running_processes = running;
     sample.total_processes = total;
+
+    return SCAN_OK;
 }
 
-void scan_load(char *buffer, size_t buffer_size) {
-    static int fd = open_file("/proc/loadavg");
+int scan_load(LoadState &state, char *buffer, size_t buffer_size, LoadSample &out) {
+    if (state.fd < 0) return SCAN_ERROR;
     LoadSample sample = {};
-    parse_loadavg(fd, buffer, buffer_size, sample);
+    if (parse_loadavg(state.fd, buffer, buffer_size, sample) != SCAN_OK) return SCAN_ERROR;
+    out = sample;
+    return SCAN_OK;
 }
 
 // NETWORK
 
-struct NetCounters {
-    unsigned long long rx_bytes;
-    unsigned long long tx_bytes;
-    unsigned long long rx_packets;
-    unsigned long long tx_packets;
-    unsigned long long rx_drops;
-    unsigned long long tx_drops;
-};
-
-void parse_net(int fd, char *buffer, size_t buffer_size, NetCounters &counters) {
+int parse_net(int fd, char *buffer, size_t buffer_size, NetCounters &counters) {
     ssize_t n = read_file(fd, buffer, buffer_size);
-    if (n <= 0) return;
+    if (n <= 0) return SCAN_ERROR;
 
     const char *p = buffer;
     const char *end = buffer + n;
@@ -276,6 +237,7 @@ void parse_net(int fd, char *buffer, size_t buffer_size, NetCounters &counters) 
 
         p = line_end + 1;
     }
+    return SCAN_OK;
 }
 
 void calculate_net_rate(const NetCounters &prev, const NetCounters &curr, double dt, NetSample &sample) {  
@@ -288,45 +250,32 @@ void calculate_net_rate(const NetCounters &prev, const NetCounters &curr, double
     sample.tx_dropsps   = counter_rate(prev.tx_drops,   curr.tx_drops,   dt);
 }
 
-void scan_net(char *buffer, size_t buffer_size) {
-    static int fd = open_file("/proc/net/dev");
-    static NetCounters prev = {};
-    static struct timespec prev_ts = {};
-    static bool has_prev = false;
-
-    struct timespec ts = {};
-    clock_gettime(CLOCK_MONOTONIC, &ts);
+int scan_net(NetState &state, char *buffer, size_t buffer_size, const timespec &now, NetSample &out) {
+    if (state.fd < 0) return SCAN_ERROR;
 
     NetCounters curr = {};
-    parse_net(fd, buffer, buffer_size, curr);
+    if (parse_net(state.fd, buffer, buffer_size, curr) != SCAN_OK) return SCAN_ERROR;
 
-    if (!has_prev) {
-        prev = curr;
-        prev_ts = ts;
-        has_prev = true;
-        return;
+    if (!state.has_prev) {
+        state.prev = curr;
+        state.prev_ts = now;
+        state.has_prev = true;
+        return SCAN_NOT_READY;
     }
 
-    float dt = static_cast<float>(ts.tv_sec - prev_ts.tv_sec) + static_cast<float>(ts.tv_nsec - prev_ts.tv_nsec) / 1e9f;
+    double dt = elapsed_seconds(state.prev_ts, now);
+    calculate_net_rate(state.prev, curr, dt, out);
 
-    NetSample sample = {};
-    calculate_net_rate(prev, curr, dt, sample);
-
-    prev = curr;
-    prev_ts = ts;
+    state.prev = curr;
+    state.prev_ts = now;
+    return SCAN_OK;
 }
 
 // I/O
 
-struct IOCounters {
-    unsigned long long sectors_read;
-    unsigned long long sectors_written;
-    unsigned long long io_ms;
-};
-
-void parse_diskstats(int fd, char *buffer, size_t buffer_size, IOCounters &counters) {
+int parse_diskstats(int fd, char *buffer, size_t buffer_size, IOCounters &counters) {
     ssize_t n = read_file(fd, buffer, buffer_size);
-    if (n <= 0) return;
+    if (n <= 0) return SCAN_ERROR;
 
     const char *p = buffer;
     const char *end = buffer + n;
@@ -379,51 +328,33 @@ void parse_diskstats(int fd, char *buffer, size_t buffer_size, IOCounters &count
         }
         p = (line_end < end) ? line_end + 1 : end;
     }
+    return SCAN_OK;
 }
 
-void calculate_io_rate(const IOCounters &prev, const IOCounters &curr, float dt, IOSample &sample) {
-    if (dt <= 0.0f) {
-        sample = {};
-        return;
-    }
-
-    auto to_rate = [dt](unsigned long long delta) -> unsigned long long {
-        double rate = static_cast<double>(delta) / static_cast<double>(dt);
-        return static_cast<unsigned long long>(rate);
-    };
-
-    sample.read_bytesps  = to_rate((curr.sectors_read - prev.sectors_read) * 512);
-    sample.write_bytesps = to_rate((curr.sectors_written - prev.sectors_written) * 512);
-    sample.io_msps       = to_rate(curr.io_ms - prev.io_ms);
+void calculate_io_rate(const IOCounters &prev, const IOCounters &curr, double dt, IOSample &sample) {
+    sample.read_bytesps  = counter_rate(prev.sectors_read, curr.sectors_read, dt) * 512;
+    sample.write_bytesps = counter_rate(prev.sectors_written, curr.sectors_written, dt) * 512;
+    sample.io_msps       = counter_rate(prev.io_ms, curr.io_ms, dt);
 }
 
-void scan_io(char *buffer, size_t buffer_size) {
-    static int fd = open_file("/proc/diskstats");
-    static IOCounters prev = {};
-    static struct timespec prev_ts = {};
-    static bool has_prev = false;
-
-    struct timespec ts = {};
-    clock_gettime(CLOCK_MONOTONIC, &ts);
+int scan_io(IOState &state, char *buffer, size_t buffer_size, const timespec &now, IOSample &out) {
+    if (state.fd < 0) return SCAN_ERROR;
 
     IOCounters curr = {};
-    parse_diskstats(fd, buffer, buffer_size, curr);
+    if (parse_diskstats(state.fd, buffer, buffer_size, curr) != SCAN_OK) return SCAN_ERROR;
 
-    if (!has_prev) {
-        prev = curr;
-        prev_ts = ts;
-        has_prev = true;
-        return;
+    if (!state.has_prev) {
+        state.prev = curr;
+        state.prev_ts = now;
+        state.has_prev = true;
+        return SCAN_NOT_READY;
     }
 
-    float dt = static_cast<float>(ts.tv_sec - prev_ts.tv_sec) + static_cast<float>(ts.tv_nsec - prev_ts.tv_nsec) / 1e9f;
-
-    IOSample sample = {};
-    calculate_io_rate(prev, curr, dt, sample);
-
-    prev = curr;
-    prev_ts = ts;
-
-    std::cout << sample.read_bytesps << "\n";
+    double dt = elapsed_seconds(state.prev_ts, now);
+    calculate_io_rate(state.prev, curr, dt, out);
+    
+    state.prev = curr;
+    state.prev_ts = now;
+    return SCAN_OK;
 }
 

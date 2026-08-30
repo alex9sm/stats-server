@@ -1,18 +1,9 @@
 #pragma once
 
 #include <cstddef>
-#include <fcntl.h>
+#include <cstring>
+#include <ctime>
 #include <unistd.h>
-#include <stdexcept>
-
-inline int open_file(const char *filepath) {
-    int fd = open(filepath, O_RDONLY);
-    if (fd < 0) {
-        throw std::runtime_error("unable to open file");
-    }
-
-    return fd;
-}
 
 inline ssize_t read_file(int fd, char *buffer, size_t buffer_size) {
     ssize_t bytes_read = pread(fd, buffer, buffer_size - 1, 0);
