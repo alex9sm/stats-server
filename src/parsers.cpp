@@ -35,6 +35,12 @@ struct NetSample {
     int tx_dropsps;
 };
 
+struct IOSample {
+    int read_bytesps;
+    int write_bytesps;
+    int io_msps;
+};
+
 //CPU
 
 float calculate_cpu_util(CpuSample &prev, CpuSample &curr) {
@@ -241,10 +247,7 @@ void parse_net(int fd, char *buffer, size_t buffer_size, NetCounters &counters) 
 
         size_t name_len = static_cast<size_t>(colon - name);
 
-        auto has_prefix = [name, name_len](const char *prefix, size_t prefix_len) {
-            return name_len > prefix_len && std::memcmp(name, prefix, prefix_len) == 0;
-        };
-        if (!has_prefix("nic", 3)) {
+        if (!has_prefix(name, name_len, "nic", 3)) {
             p = line_end + 1;
             continue;
         }
@@ -321,5 +324,53 @@ void scan_net(char *buffer, size_t buffer_size) {
     prev = curr;
     prev_ts = ts;
 
-    std::cout << sample.rx_bytesps;
+    std::cout << sample.rx_bytesps << "\n";
+}
+
+// I/O
+
+struct IOCounters {
+    unsigned long long sectors_read;
+    unsigned long long sectors_written;
+    unsigned long long io_ms;
+};
+
+bool is_target_disk(const char *dev, size_t len) {
+    return has_prefix(dev, len, "sd", 2) || has_prefix(dev, len, "nvme", 4) || has_prefix(dev, len, "hd", 2);
+}
+
+void parse_diskstats(int fd, char *buffer, size_t buffer_size, IOCounters &counters) {
+    ssize_t n = read_and_copy(fd, buffer, buffer_size);
+    if (n <= 0) return;
+
+    const char *p = buffer;
+    const char *end = buffer + n;
+
+    while (p < end) {
+        const char *line_end = find_char(p, end, '\n');
+
+        while (p < line_end && (*p == ' ' || *p == '\t')) {
+            ++p;
+        }
+
+        for (int i = 0; i < 2; i++) {
+            while (p < line_end && is_digit(p, line_end)) ++p;
+            while (p < line_end && (*p == ' ' || *p == '\t')) ++p;
+        }
+
+        const char *device_name = p;
+        while (p < line_end && *p != ' ' && *p != '\t') {
+            ++p;
+        }
+        size_t device_name_len = static_cast<size_t>(p - device_name);
+
+        
+    }
+
+}
+
+void scan_io(char *buffer, size_t buffer_size) {
+    static int fd = open_file("/proc/net/dev");
+
+
 }
