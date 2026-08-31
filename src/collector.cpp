@@ -23,17 +23,15 @@ void close_metric(int &fd) {
     }
 }
 
-int collector_init(Collector &collector) {
-    int failures = 0;
+void collector_init(Collector &collector) {
 
-    if (!open_metric(collector.cpu.fd, "/proc/stat")) ++failures;
-    if (!open_metric(collector.mem.fd, "/proc/meminfo")) ++failures;
-    if (!open_metric(collector.load.fd, "/proc/loadavg")) ++failures;
-    if (!open_metric(collector.net.fd, "/proc/net/dev")) ++failures;
-    if (!open_metric(collector.io.fd, "/proc/diskstats")) ++failures;
-    if (!open_metric(collector.up.fd, "/proc/uptime")) ++failures;
-    if (!open_metric(collector.disk.fd, "/")) ++ failures;
-    return failures;
+    open_metric(collector.cpu.fd, "/proc/stat");
+    open_metric(collector.mem.fd, "/proc/meminfo");
+    open_metric(collector.load.fd, "/proc/loadavg");
+    open_metric(collector.net.fd, "/proc/net/dev");
+    open_metric(collector.io.fd, "/proc/diskstats");
+    open_metric(collector.up.fd, "/proc/uptime");
+    open_metric(collector.disk.fd, "/");
 }
 
 void collector_tick(Collector &collector, Snapshot &out) {
@@ -114,8 +112,14 @@ void flatten(const Snapshot &s, std::array<float, metrics_count> &out) {
 void ring_push(RingBuffer &buffer, const Snapshot &s) {
     std::array<float, metrics_count> row;
     flatten(s, row);
+    timespec wall = {};
+    clock_gettime(CLOCK_REALTIME, &wall);
     std::lock_guard<std::mutex> lock(buffer.mut);
+    if (buffer.total_written == 0) buffer.epoch_first_push = wall.tv_sec;
+
     buffer.ring_buffer[buffer.head] = row;
     buffer.head = (buffer.head + 1) % ring_cap;
     if (buffer.recorded_count < ring_cap) ++buffer.recorded_count;
+
+    ++buffer.total_written;
 }

@@ -10,12 +10,15 @@ auto rb = std::make_unique<RingBuffer>();
 
 int main() {
     Collector c;
-    int failures = collector_init(c);
+    collector_init(c);
     Snapshot s;
+    constexpr auto interval = std::chrono::seconds(tick_length_seconds);
+    auto next_tick = std::chrono::steady_clock::now();
     while (true) {
         collector_tick(c, s);
         ring_push(*rb, s);
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        next_tick += interval;
+        std::this_thread::sleep_until(next_tick);
     }
     collector_close(c);
     return 0;

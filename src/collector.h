@@ -6,6 +6,7 @@
 
 #include "parsers.h"
 
+constexpr int tick_length_seconds = 5;
 constexpr size_t collector_buffer_size = 32768;
 constexpr size_t ring_cap = 518400;
 //24 metrics across all snapshot structs
@@ -54,10 +55,12 @@ struct RingBuffer {
     std::array<float, metrics_count> ring_buffer[ring_cap];
     size_t head = 0;
     size_t recorded_count = 0;
+    long long epoch_first_push = 0;
+    unsigned long long total_written = 0;
     std::mutex mut;
 };
 
-int collector_init(Collector &collector);
+void collector_init(Collector &collector);
 void collector_tick(Collector &collector, Snapshot &out);
 void collector_close(Collector &collector);
 void flatten(const Snapshot &s, std::array<float, metrics_count> &out);
