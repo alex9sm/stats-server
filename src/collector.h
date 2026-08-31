@@ -53,6 +53,7 @@ struct Collector {
 struct RingBuffer {
     std::array<float, metrics_count> ring_buffer[ring_cap];
     size_t head = 0;
+    size_t recorded_count = 0;
     std::mutex mut;
 };
 
@@ -60,3 +61,4 @@ int collector_init(Collector &collector);
 void collector_tick(Collector &collector, Snapshot &out);
 void collector_close(Collector &collector);
 void flatten(const Snapshot &s, std::array<float, metrics_count> &out);
+void ring_push(RingBuffer &buffer, const Snapshot &s);

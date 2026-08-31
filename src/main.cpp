@@ -6,13 +6,7 @@
 
 #include "collector.h"
 
-static void print_snapshot(const Snapshot &s) {
-    std::printf("---tick---\n");
-
-    if (s.up_status == SCAN_OK) {
-        std::printf("uptime: %d\n", s.up.uptime);
-    }
-}
+auto rb = std::make_unique<RingBuffer>();
 
 int main() {
     Collector c;
@@ -20,7 +14,7 @@ int main() {
     Snapshot s;
     while (true) {
         collector_tick(c, s);
-        print_snapshot(s);
+        ring_push(*rb, s);
         std::this_thread::sleep_for(std::chrono::seconds(5));
     }
     collector_close(c);

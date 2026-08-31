@@ -2,6 +2,7 @@
 #include <iostream>
 #include <unistd.h>
 #include <fcntl.h>
+#include <limits>
 
 #include "collector.h"
 #include "utils.h"
@@ -72,8 +73,14 @@ void flatten(const Snapshot &s, std::array<float, metrics_count> &out) {
         out[mem_total] = s.mem.mem_total_kb;        
         out[mem_free] = s.mem.mem_free_kb;
         out[mem_available] = s.mem.mem_available_kb;
-        out[swap_total] = s.mem.swap_free_kb;
+        out[swap_total] = s.mem.swap_total_kb;
         out[swap_free] = s.mem.swap_free_kb;
+    }
+
+    if (s.load_status == SCAN_OK) {
+        out[minute_load] = s.load.minute_load;
+        out[running_procs] = s.load.running_processes;
+        out[total_procs] = s.load.total_processes;
     }
 
     if (s.net_status == SCAN_OK) {
@@ -102,4 +109,13 @@ void flatten(const Snapshot &s, std::array<float, metrics_count> &out) {
         out[total_inodes] = s.disk.inodes_total;
         out[free_inodes] = s.disk.inodes_free;
     }
+}
+
+void ring_push(RingBuffer &buffer, const Snapshot &s) {
+    std::array<float, metrics_count> row;
+    flatten(s, row);
+    std::lock_guard<std::mutex> lock(buffer.mut);
+    buffer.ring_buffer[buffer.head] = row;
+    buffer.head = (buffer.head + 1) % ring_cap;
+    if (buffer.recorded_count < ring_cap) ++buffer.recorded_count;
 }
