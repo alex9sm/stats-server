@@ -1,6 +1,7 @@
 #include <cstring>
 #include <unistd.h>
 #include <ctime>
+#include <sys/statvfs.h>
 
 #include "parsers.h"
 #include "utils.h"
@@ -382,5 +383,23 @@ int scan_uptime(UpState &state, char *buffer, size_t buffer_size, UpSample &out)
     UpSample sample = {};
     if (parse_uptime(state.fd, buffer, buffer_size, sample) != SCAN_OK) return SCAN_ERROR;
     out = sample;
+    return SCAN_OK;
+}
+
+// FILESYSTEM
+
+int scan_disk(DiskState &state, DiskSample &out) {
+    if (state.fd < 0) return SCAN_ERROR;
+
+    struct statvfs s;
+    if (fstatvfs(state.fd, &s) != 0) return SCAN_ERROR;
+
+    const unsigned long long unit = s.f_frsize;
+
+    out.total_bytes = static_cast<unsigned long long>(s.f_blocks) * unit;
+    out.free_bytes = static_cast<unsigned long long>(s.f_bfree) * unit;
+    out.available_bytes = static_cast<unsigned long long>(s.f_bavail) * unit;
+    out.inodes_total = s.f_files;
+    out.inodes_free = s.f_ffree;
     return SCAN_OK;
 }

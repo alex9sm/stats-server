@@ -15,7 +15,7 @@ static const char *status_text(int status) {
 }
 
 static void print_snapshot(const Snapshot &s) {
-    std::printf("---tick---");
+    std::printf("---tick---\n");
 
     if (s.up_status == SCAN_OK) {
         std::printf("uptime: %d\n", s.up.uptime);
