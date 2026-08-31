@@ -6,14 +6,6 @@
 
 #include "collector.h"
 
-static const char *status_text(int status) {
-    switch (status) {
-        case SCAN_OK:        return "ok";
-        case SCAN_NOT_READY: return "priming";
-        default:             return "error";
-    }
-}
-
 static void print_snapshot(const Snapshot &s) {
     std::printf("---tick---\n");
 
