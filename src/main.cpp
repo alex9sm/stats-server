@@ -1,14 +1,17 @@
-// g++ -O3 -std=c++20 -Wall main.cpp parsers.cpp collector.cpp -o ../main
+// g++ -O3 -std=c++20 -Wall main.cpp parsers.cpp collector.cpp server.cpp -o ../main
 
 #include <chrono>
 #include <cstdio>
 #include <thread>
 
 #include "collector.h"
+#include "server.h"
 
 auto rb = std::make_unique<RingBuffer>();
 
 int main() {
+    server_init();
+
     Collector c;
     collector_init(c);
     Snapshot s;
