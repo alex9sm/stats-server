@@ -1,0 +1,1 @@
+Reads 24 metrics (currently) and stores in memory for up to 30 days. Currently no persistence or database. Accepts http requests and returns json format to be accepted by dataviz dashboards like Grafana with json plugins.
