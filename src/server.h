@@ -1,3 +1,5 @@
 #pragma once
 
-void server_init();
+struct RingBuffer;
+
+void server_run(RingBuffer &rb);

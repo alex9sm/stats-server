@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <limits>
+#include <cmath>
 
 #include "collector.h"
 #include "utils.h"
@@ -64,48 +65,48 @@ void flatten(const Snapshot &s, std::array<float, metrics_count> &out) {
     out.fill(std::numeric_limits<float>::quiet_NaN());
 
     if (s.cpu_status == SCAN_OK) {
-        out[cpu_util] = s.cpu.utilization;
+        out[0] = s.cpu.utilization;
     }
 
     if (s.mem_status == SCAN_OK) {
-        out[mem_total] = s.mem.mem_total_kb;        
-        out[mem_free] = s.mem.mem_free_kb;
-        out[mem_available] = s.mem.mem_available_kb;
-        out[swap_total] = s.mem.swap_total_kb;
-        out[swap_free] = s.mem.swap_free_kb;
+        out[1] = s.mem.mem_total_kb;        
+        out[2] = s.mem.mem_free_kb;
+        out[3] = s.mem.mem_available_kb;
+        out[4] = s.mem.swap_total_kb;
+        out[5] = s.mem.swap_free_kb;
     }
 
     if (s.load_status == SCAN_OK) {
-        out[minute_load] = s.load.minute_load;
-        out[running_procs] = s.load.running_processes;
-        out[total_procs] = s.load.total_processes;
+        out[6] = s.load.minute_load;
+        out[7] = s.load.running_processes;
+        out[8] = s.load.total_processes;
     }
 
     if (s.net_status == SCAN_OK) {
-        out[rx_bytesps] = s.net.rx_bytesps;
-        out[tx_bytesps] = s.net.tx_bytesps;
-        out[rx_packetsps] = s.net.rx_packetsps;
-        out[tx_packetsps] = s.net.tx_packetsps;
-        out[rx_dropsps] = s.net.rx_dropsps;
-        out[tx_dropsps] = s.net.tx_dropsps;
+        out[9] = s.net.rx_bytesps;
+        out[10] = s.net.tx_bytesps;
+        out[11] = s.net.rx_packetsps;
+        out[12] = s.net.tx_packetsps;
+        out[13] = s.net.rx_dropsps;
+        out[14] = s.net.tx_dropsps;
     }
 
     if (s.io_status == SCAN_OK) {
-        out[read_bytesps] = s.io.read_bytesps;
-        out[write_bytesps] = s.io.write_bytesps;
-        out[io_msps] = s.io.io_msps;
+        out[15] = s.io.read_bytesps;
+        out[16] = s.io.write_bytesps;
+        out[17] = s.io.io_msps;
     }
 
     if (s.up_status == SCAN_OK) {
-        out[uptime] = s.up.uptime;
+        out[18] = s.up.uptime;
     }
 
     if (s.disk_status == SCAN_OK) {
-        out[total_bytes] = s.disk.total_bytes;
-        out[free_bytes] = s.disk.free_bytes;
-        out[avail_bytes] = s.disk.available_bytes;
-        out[total_inodes] = s.disk.inodes_total;
-        out[free_inodes] = s.disk.inodes_free;
+        out[19] = s.disk.total_bytes;
+        out[20] = s.disk.free_bytes;
+        out[21] = s.disk.available_bytes;
+        out[22] = s.disk.inodes_total;
+        out[23] = s.disk.inodes_free;
     }
 }
 
@@ -122,4 +123,40 @@ void ring_push(RingBuffer &buffer, const Snapshot &s) {
     if (buffer.recorded_count < ring_cap) ++buffer.recorded_count;
 
     ++buffer.total_written;
+}
+
+QueryResult ring_get(RingBuffer &rb, long long from, long long to, long long step) {
+    QueryResult result;
+    const long long interval = tick_length_seconds;
+
+    long long stride = 1;
+    if (step > 0) {
+        long long s = step / (interval * 1000);
+        if (s > 1) stride = s;
+    }
+
+    const double from_s = static_cast<double>(from) / 1000.0;
+    const double to_s = static_cast<double>(to) / 1000.0;
+
+    std::lock_guard<std::mutex> lock(rb.mut);
+    if (rb.recorded_count == 0) return result;
+
+
+    const long long t0 = rb.epoch_first_push;
+    const long long oldest = static_cast<long long>(rb.total_written - rb.recorded_count);
+    const long long newest = static_cast<long long>(rb.total_written) - 1;
+    long long start = static_cast<long long>(std::ceil((from_s - t0) / interval));
+    long long end = static_cast<long long>(std::floor((to_s - t0) / interval));
+
+    if (start < oldest) start = oldest;
+    if (end > newest) end = newest;
+    if (start > end) return result;
+    if (stride > 1) start = ((start + stride - 1) / stride) * stride;
+    for (long long i = start; i < end; i += stride) {
+        const long long slot = i % static_cast<long long>(ring_cap);
+        const long long ts_ms = (t0 + i * interval) * 1000LL;
+        result.time_ms.push_back(ts_ms);
+        result.rows.push_back(rb.ring_buffer[slot]);
+    }
+    return result;
 }

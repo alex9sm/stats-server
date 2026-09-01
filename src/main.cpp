@@ -10,10 +10,12 @@
 auto rb = std::make_unique<RingBuffer>();
 
 int main() {
-    server_init();
-
     Collector c;
     collector_init(c);
+
+    std::thread server_thread(server_run, std::ref(*rb));
+    server_thread.detach();
+
     Snapshot s;
     constexpr auto interval = std::chrono::seconds(tick_length_seconds);
     auto next_tick = std::chrono::steady_clock::now();
