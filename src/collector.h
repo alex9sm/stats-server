@@ -12,7 +12,7 @@ constexpr size_t collector_buffer_size = 32768;
 constexpr size_t ring_cap = 518400;
 //24 metrics across all snapshot structs
 constexpr int metrics_count = 24;
-const char *metric_names[metrics_count] = {
+inline constexpr const char *metric_names[metrics_count] = {
     "cpu_util",
     "mem_total", "mem_free", "mem_available", "swap_total", "swap_free",
     "minute_load", "running_procs", "total_procs",

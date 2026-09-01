@@ -34,8 +34,8 @@ void server_run(RingBuffer &rb) {
             nlohmann::json row;
             row["time"] = qr.time_ms[i];
             const auto &r = qr.rows[i];
-            for (int m = 0; m < metrics_count - 1; ++m) {
-                row[metrics[m]] = r[m];
+            for (int m = 0; m < metrics_count; ++m) {
+                row[metric_names[m]] = r[m];
             }
             out.push_back(std::move(row));
         }
